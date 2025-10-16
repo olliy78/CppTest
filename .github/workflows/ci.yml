@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libgtest-dev
+        
+    - name: Create build directory
+      run: mkdir build
+      
+    - name: Configure CMake
+      run: cd build && cmake ..
+      
+    - name: Build project
+      run: cd build && make
+      
+    - name: Run tests and verify output
+      run: |
+        cd build
+        # Determine test executable name (handle both cpptest_test and cpptest_tests)
+        if [ -f "cpptest_test" ]; then
+          TEST_EXEC="./cpptest_test"
+        elif [ -f "cpptest_tests" ]; then
+          TEST_EXEC="./cpptest_tests"
+        else
+          echo "Error: Test executable not found"
+          exit 1
+        fi
+        
+        # Run tests and capture output
+        output=$($TEST_EXEC 2>&1)
+        echo "$output"
+        
+        # Verify PASSED in output
+        if echo "$output" | grep -q "PASSED"; then
+          echo "Tests passed successfully"
+          exit 0
+        else
+          echo "Tests did not pass - PASSED not found in output"
+          exit 1
+        fi
