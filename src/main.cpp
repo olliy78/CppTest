@@ -3,6 +3,8 @@
 #include <getopt.h>
 #include "operations.h"
 
+
+// Function to display help message
 void printHelp() {
     std::cout << "Usage: cpptest -o <operation> <input_file> <output_file>\n";
     std::cout << "       cpptest -h|--help\n\n";
@@ -19,6 +21,7 @@ void printHelp() {
     std::cout << "  divide                  Divide all numbers sequentially\n";
 }
 
+// Main function‚
 int main(int argc, char* argv[]) {
     std::string operation;
     bool helpRequested = false;
