@@ -1,0 +1,52 @@
+# Add GitHub configurations for issue-driven workflow
+
+Dieser Pull Request richtet einen issue-getriebenen Workflow in diesem Repository ein. Er umfasst Issue-Templates und mehrere GitHub Actions, die Branch-Erstellung, Testen und PR-Erstellung automatisieren.
+
+## Enthaltene Änderungen
+
+- Issue-Templates
+  - .github/ISSUE_TEMPLATE/bug_report.md
+    - Automatisches Label: bug
+    - Automatische Zuweisung: @olliy78
+    - Abschnitte: Beschreibung, Schritte zum Reproduzieren, Erwartetes Verhalten, Tatsächliches Verhalten, Zusätzliche Informationen, Akzeptanzkriterien (Checklist)
+  - .github/ISSUE_TEMPLATE/feature_request.md
+    - Automatisches Label: feature
+    - Automatische Zuweisung: @olliy78
+    - Abschnitte: Beschreibung, Begründung/Nutzen, Akzeptanzkriterien (Checklist), Risiken/Side Effects, Sonstiges
+
+- GitHub Actions (Workflows)
+  - .github/workflows/issue-auto-branch.yml
+    - Auslöser: Issue erhält Label „in progress“
+    - Wirkung: Erstellt automatisch einen Branch vom Default-Branch
+      - Namensschema: issue-<ISSUE-NR>-<slug-des-titels>
+      - Kommentiert den Branch-Link im Issue
+  - .github/workflows/issue-ready-for-test.yml
+    - Auslöser: Issue erhält Label „ready for test“
+    - Wirkung: Baut den passenden Issue-Branch und führt Unit Tests aus
+      - Installiert: build-essential, cmake, libgtest-dev
+      - Build: cmake -S . -B build && cmake --build build -j2
+      - Test: ./build/cpptest_test muss „PASSED“ ausgeben
+      - Kommentiert das Ergebnis (PASSED/FAILED) im Issue inkl. Link zu den Logs
+      - Label-Übergänge: bei Erfolg -> „ready for merge“, bei Fehler -> zurück zu „in progress“
+  - .github/workflows/issue-ready-for-merge-pr.yml
+    - Auslöser: Issue erhält Label „ready for merge“
+    - Wirkung: Erstellt automatisch einen Pull Request vom Issue-Branch auf den Default-Branch
+      - PR-Titel: "Issue #<nr>: <issue title>"
+      - PR-Body enthält „Closes #<nr>“ für automatisches Schließen nach Merge
+      - Kommentiert den PR-Link im Issue
+
+## So verwendest du den Workflow
+1. Neues Issue (Bug/Feature) erstellen – es wird automatisch gelabelt und @olliy78 zugewiesen.
+2. Label „in progress“ setzen – ein Branch wird automatisch angelegt und im Issue verlinkt.
+3. Änderungen im erzeugten Branch pushen.
+4. Label „ready for test“ setzen – Build & Tests laufen automatisch; Ergebnis wird im Issue kommentiert und das Status-Label entsprechend gesetzt.
+5. Bei Erfolg Label „ready for merge“ setzen – es wird automatisch ein PR erstellt.
+6. PR mergen – durch „Closes #<nr>“ wird das Issue automatisch geschlossen.
+
+## Hinweise & Voraussetzungen
+- Workflow-Berechtigungen: In den Repository-Einstellungen unter Settings → Actions → General bitte „Workflow permissions: Read and write permissions“ aktivieren.
+- Labels für Status („in progress“, „ready for test“, „ready for merge“) werden bei Bedarf durch die Workflows per API angelegt.
+- Der Default-Branch wird dynamisch über die GitHub API ermittelt.
+- Es werden keine Project-Board-Spalten automatisiert verschoben; Statuswechsel erfolgen ausschließlich über Labels.
+
+Bei Fragen oder Änderungswünschen gerne hier im PR kommentieren.
