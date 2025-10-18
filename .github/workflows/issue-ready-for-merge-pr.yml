@@ -1,0 +1,51 @@
+name: Issue - Auto PR on "ready for merge"
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  open-pr:
+    if: github.event.action == 'labeled' && github.event.label.name == 'ready for merge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or reuse PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+
+            const { data: repoData } = await github.repos.get({ owner, repo });
+            const base = repoData.default_branch;
+
+            const branches = await github.paginate(github.repos.listBranches, { owner, repo, per_page: 100 });
+            const prefix = `issue-${issue.number}-`;
+            const match = branches.find(b => b.name && b.name.startsWith(prefix));
+            if (!match) {
+              throw new Error(`Kein Branch gefunden mit Präfix ${prefix}`);
+            }
+            const head = match.name;
+
+            const existing = await github.pulls.list({ owner, repo, state: 'open', head: `${owner}:${head}` });
+            let pr;
+            if (existing.data && existing.data.length > 0) {
+              pr = existing.data[0];
+            } else {
+              pr = (await github.pulls.create({
+                owner,
+                repo,
+                title: `Issue #${issue.number}: ${issue.title}`,
+                head,
+                base,
+                body: `Closes #${issue.number}\n\nAuto-erzeugt aus dem Issue-Statuswechsel auf 'ready for merge'.`
+              })).data;
+            }
+
+            await github.issues.createComment({ owner, repo, issue_number: issue.number, body: `PR erstellt/gefunden: ${pr.html_url}` });
