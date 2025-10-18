@@ -1,0 +1,118 @@
+name: Issue - Test on "ready for test"
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  test-branch:
+    if: github.event.action == 'labeled' && github.event.label.name == 'ready for test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find issue branch
+        id: find
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+            const branches = await github.paginate(github.repos.listBranches, { owner, repo, per_page: 100 });
+            const prefix = `issue-${issue.number}-`;
+            const match = branches.find(b => b.name && b.name.startsWith(prefix));
+            if (!match) {
+              core.setFailed(`Kein Branch gefunden mit Präfix ${prefix}`);
+              return;
+            }
+            core.setOutput('branch', match.name);
+            core.setOutput('issue_number', String(issue.number));
+      
+      - name: Checkout issue branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.find.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libgtest-dev
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build
+          cmake --build build -j2
+
+      - name: Run tests
+        id: test
+        run: |
+          set -e
+          if [ ! -x ./build/cpptest_test ]; then
+            echo "Testbinary ./build/cpptest_test nicht gefunden oder nicht ausführbar"
+            exit 1
+          fi
+          set +e
+          ./build/cpptest_test | tee test_output.txt
+          exit_code=${PIPESTATUS[0]}
+          grep -q "PASSED" test_output.txt
+          grep_code=$?
+          if [ $exit_code -eq 0 ] && [ $grep_code -eq 0 ]; then
+            echo "result=passed" >> $GITHUB_OUTPUT
+          else
+            echo "result=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Kommentiere Ergebnis im Issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = Number('${{ steps.find.outputs.issue_number }}');
+            const result = '${{ steps.test.outputs.result }}' === 'passed' ? 'PASSED ✅' : 'FAILED ❌';
+            const runId = process.env.GITHUB_RUN_ID;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${runId}`;
+            const body = `Testergebnis: ${result}\n\nDetails: ${runUrl}`;
+            await github.issues.createComment({ owner, repo, issue_number, body });
+
+      - name: Labels aktualisieren je nach Ergebnis
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue = context.payload.issue;
+            const passed = '${{ steps.test.outputs.result }}' === 'passed';
+
+            async function ensureLabel(name, color) {
+              try {
+                await github.issues.getLabel({ owner, repo, name });
+              } catch (e) {
+                if (e.status === 404) {
+                  await github.issues.createLabel({ owner, repo, name, color });
+                } else {
+                  throw e;
+                }
+              }
+            }
+
+            await ensureLabel('in progress', '1f6feb');
+            await ensureLabel('ready for test', 'fbca04');
+            await ensureLabel('ready for merge', '0e8a16');
+
+            const existing = (issue.labels || []).map(l => typeof l === 'string' ? l : l.name).filter(Boolean);
+            const withoutReadyForTest = existing.filter(n => n !== 'ready for test');
+            const next = new Set(withoutReadyForTest);
+            if (passed) {
+              next.add('ready for merge');
+            } else {
+              next.add('in progress');
+            }
+            await github.issues.update({ owner, repo, issue_number: issue.number, labels: Array.from(next) });
